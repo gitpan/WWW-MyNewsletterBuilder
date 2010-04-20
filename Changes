@@ -1,0 +1,10 @@
+Revision history for Perl extension WWW::MyNewsletterBuilder.
+
+0.01  Mon Apr 19 20:19:45 2010
+	- original version; created by h2xs 1.23 with options
+		-AXc -n WWW::JBANetwork::MNB
+		
+0.01b01 Mon Apr 19 23:38:50 2010
+	- FIXED documentation
+	- UPDATED argument list for UPDATE methods
+	- changed namespace from WWW::JBANetwork::MNB to WWW::MyNewsletterBuilder
