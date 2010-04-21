@@ -5,7 +5,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'WWW::MyNewsletterBuilder',
     VERSION_FROM      => 'lib/WWW/MyNewsletterBuilder.pm', # finds $VERSION
-    PREREQ_PM         => {Frontier::Client => 0.06, Data::Dumper => 5.004}, # e.g., Module::Name => 1.1
+    PREREQ_PM         => {Frontier::RPC => 0, Data::Dumper => 0}, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'lib/WWW/MyNewsletterBuilder.pm', # retrieve abstract from module
        AUTHOR         => 'Robert Davis <robert@jbanetwork.com>') : ()),

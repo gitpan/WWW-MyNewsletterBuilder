@@ -6,7 +6,7 @@
 # WWW::MyNewsletterBuilder is an interface to the mynewsletterbuilder.com
 # XML-RPC API.
 #
-# $Id: MyNewsletterBuilder.pm 59133 2010-04-20 04:11:37Z bo $
+# $Id: MyNewsletterBuilder.pm 59277 2010-04-21 15:45:31Z bo $
 #
 
 package WWW::MyNewsletterBuilder;
@@ -15,11 +15,7 @@ use strict;
 use warnings;
 use Frontier::Client;
 
-require Exporter;
-
-our @ISA = qw(Exporter);
-
-our $VERSION = '0.01b01';
+our $VERSION = '0.02b01';
 
 sub new {
 	my $class = shift;
@@ -36,22 +32,24 @@ sub new {
 		timeout       => $args->{timeout}       || 300,
 		secure        => $args->{secure}        || 0,
 		no_validation => $args->{no_validation} || 0,
-		api_host      => $args->{api_host}      || 'api.mynewsletterbuilder.com',
-		api_version   => $args->{api_version}   || '1.0',
-		debug         => $args->{debug}         || 0,
+		_api_host     => $args->{_api_host}     || 'api.mynewsletterbuilder.com',
+		_api_version  => $args->{_api_version}  || '1.0',
+		_debug        => $args->{_debug}        || 0,
 	};
 
 	bless($self, $class);
 
-	my $url = $self->buildUrl();
-	if ($self->{debug}){
+	# we have to bless before setting up the url and client
+	my $url = $self->_buildUrl();
+	if ($self->{_debug}){
 		print "url: $url\n";
 	}
-	
-	$self->{client} = $self->getClient($url);
+
+	$self->{client} = $self->_getClient($url);
 	return $self;
 }
 
+# the only config var that might need to be changed between calls is timeout
 sub Timeout{
 	my $self = shift;
 	$self->{timeout} = shift;
@@ -62,46 +60,37 @@ sub Timeout{
 sub Campaigns{
 	my $self    = shift;
 	my $filters = ($#_ == 0) ? { %{ (shift) } } : { @_ };
+
 	# make sure that if filters is populated
 	# it is a hashref
-	if (	$filters && 
-	     	ref($filters) ne 'HASH'
-	){
-		$self->error('filter passed to WWW::MyNewsletterBuilder->Campaings() does not appear to be valid', 1);
+	if ($filters && ref($filters) ne 'HASH'){
+		$self->_error('filter passed to WWW::MyNewsletterBuilder->Campaings() does not appear to be valid', 1);
 	}
-	
-	return $self->Execute('Campaigns', $filters);
+
+	return $self->_Execute('Campaigns', $filters);
 }
 
 sub CampaignDetails{
 	my $self = shift;
-	my $id   = shift;
+	my $id   = $self->_intify(shift);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingDetails()') unless ($id =~ /^\d+$/);
-
-	return $self->Execute('CampaignDetails', $id);
+	return $self->_Execute('CampaignDetails', $id);
 }
 
 sub CampaignCreate{
 	my $self          = shift;
-	my $name          = shift;
-	my $subject       = shift;
+	my $name          = $self->_stringify(shift);
+	my $subject       = $self->_stringify(shift);
 	my $from          = shift;
 	my $reply         = shift;
-	my $html          = shift;
-	my $text          = shift || '';
-	my $link_tracking = shift || 1;
-	my $gat           = shift || 0;
-	
-	$self->error('invalid name passed to WWW::MyNewsletterBuilder->CampaignCreate()')               unless ($name           =~ /^.+$/);
-	$self->error('invalid subject passed to WWW::MyNewsletterBuilder->CampaignCreate()')            unless ($subject        =~ /^.+$/);
-	$self->error('invalid html passed to WWW::MyNewsletterBuilder->CampaignCreate()')               unless ($html           =~ /^.+$/);
-	$self->error('invalid text passed to WWW::MyNewsletterBuilder->CampaignCreate()')               unless (!$text || $text =~ /^.+$/);
-	$self->error('invalid link_tracking flag passed to WWW::MyNewsletterBuilder->CampaignCreate()') unless ($link_tracking  =~ /^(0|1)$/);
-	$self->error('invalid gat flag passed to WWW::MyNewsletterBuilder->CampaignCreate()')           unless ($gat            =~ /^(0|1)$/);
-	#should probably add some from/reply validation here
-	
-	return $self->Execute(
+	my $html          = $self->_stringify(shift);
+	my $text          = $self->_stringify(shift || '', 1);
+	my $link_tracking = $self->_boolify(shift || 1);
+	my $gat           = $self->_boolify(shift || 0);
+
+	#TODO: should probably add some from/reply validation here
+
+	return $self->_Execute(
 		'CampaignCreate',
 		$name,
 		$subject,
@@ -116,14 +105,12 @@ sub CampaignCreate{
 
 sub CampaignUpdate{
 	my $self          = shift;
-	my $id            = shift;
+	my $id            = $self->_intify(shift);
 	my $details       = shift;
-	
-	
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignCreate()') unless ($id =~ /^\d+$/);
+
 	#TODO: should probably add some detail validation here
-	
-	return $self->Execute(
+
+	return $self->_Execute(
 		'CampaignUpdate',
 		$id,
 		$details,
@@ -132,60 +119,53 @@ sub CampaignUpdate{
 
 sub CampaignCopy{
 	my $self = shift;
-	my $id   = shift;
-	my $name = shift || '';
+	my $id   = $self->_intify(shift);
+	my $name = $self->_stringify(shift || '', 1);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingStats()') unless ($id =~ /^\d+$/);
-
-	return $self->Execute('CampaignCopy', $id, $name);
+	return $self->_Execute('CampaignCopy', $id, $name);
 }
 
 sub CampaignDelete{
 	my $self = shift;
-	my $id   = shift;
+	my $id   = $self->_intify(shift);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingStats()') unless ($id =~ /^\d+$/);
-
-	return $self->Execute('CampaignDelete', $id);
+	return $self->_Execute('CampaignDelete', $id);
 }
 
 sub CampaignSchedule{
 	my $self      = shift;
-	my $id        = shift;
-	my $when      = shift;
+	my $id        = $self->_intify(shift);
+	my $when      = $self->_stringify(shift);
 	my $lists     = shift;
-	my $smart     = shift || 0;
-	my $confirmed = shift || 0;
+	my $smart     = $self->_boolify(shift || 0);
+	my $confirmed = $self->_boolify(shift || 0);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingStats()')              unless ($id        =~ /^\d+$/);
-	$self->error('invalid when passed to WWW::MyNewsletterBuilder->CampaignCreate()')           unless ($when      =~ /^.+$/);
-	$self->error('invalid smart flag passed to WWW::MyNewsletterBuilder->CampaignCreate()')     unless ($smart     =~ /^(0|1)$/);
-	$self->error('invalid confirmed flag passed to WWW::MyNewsletterBuilder->CampaignCreate()') unless ($confirmed =~ /^(0|1)$/);
 	#TODO: add some validation for $lists here
 
-	return $self->Execute('CampaignSchedule', $id, $when, $lists, $smart, $confirmed);
+	return $self->_Execute(
+		'CampaignSchedule',
+		$id,
+		$when,
+		$lists,
+		$smart,
+		$confirmed
+	);
 }
 
 sub CampaignStats{
 	my $self = shift;
-	my $id   = shift;
+	my $id   = $self->_intify(shift);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingStats()') unless ($id =~ /^\d+$/);
-
-	return $self->Execute('CampaignStats', $id);
+	return $self->_Execute('CampaignStats', $id);
 }
 
 sub CampaignRecipients{
 	my $self  = shift;
-	my $id    = shift;
-	my $page  = shift || 0;
-	my $limit = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaingRecipients()')    unless ($id    =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaingRecipients()')  unless ($page  =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaingRecipients()') unless ($limit =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignRecipients',
 		$id,
 		$page,
@@ -195,15 +175,11 @@ sub CampaignRecipients{
 
 sub CampaignOpens{
 	my $self  = shift;
-	my $id    = shift;
-	my $page  = shift || 0;
-	my $limit = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignOpens()')    unless ($id    =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignOpens()')  unless ($page  =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignOpens()') unless ($limit =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignOpens',
 		$id,
 		$page,
@@ -213,15 +189,11 @@ sub CampaignOpens{
 
 sub CampaignBounces{
 	my $self  = shift;
-	my $id    = shift;
-	my $page  = shift || 0;
-	my $limit = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignBounces()')    unless ($id    =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignBounces()')  unless ($page  =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignBounces()') unless ($limit =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignBounces',
 		$id,
 		$page,
@@ -231,15 +203,11 @@ sub CampaignBounces{
 
 sub CampaignClicks{
 	my $self   = shift;
-	my $id     = shift;
-	my $page   = shift || 0;
-	my $limit  = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignClicks()')     unless ($id     =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignClicks()')   unless ($page   =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignClicks()')  unless ($limit  =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignClicks',
 		$id,
 		$page,
@@ -249,17 +217,12 @@ sub CampaignClicks{
 
 sub CampaignClickDetails{
 	my $self   = shift;
-	my $id     = shift;
-	my $url_id = shift;
-	my $page   = shift || 0;
-	my $limit  = shift || 1000;
+	my $id     = $self->_intify(shift);
+	my $url_id = $self->_intify(shift);
+	my $page   = $self->_intify(shift || 0);
+	my $limit  = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignClickDetails()')     unless ($id     =~ /^\d+$/);
-	$self->error('invalid url_id passed to WWW::MyNewsletterBuilder->CampaignClickDetails()') unless ($url_id =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignClickDetails()')   unless ($page   =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignClickDetails()')  unless ($limit  =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignClickDetails',
 		$id,
 		$url_id,
@@ -270,15 +233,11 @@ sub CampaignClickDetails{
 
 sub CampaignSubscribes{
     my $self  = shift;
-	my $id    = shift;
-	my $page  = shift || 0;
-	my $limit = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignSubscribes()')    unless ($id    =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignSubscribes()')  unless ($page  =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignSubscribes()') unless ($limit =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignSubscribes',
 		$id,
 		$page,
@@ -288,15 +247,11 @@ sub CampaignSubscribes{
 
 sub CampaignUnsubscribes{
     my $self  = shift;
-	my $id    = shift;
-	my $page  = shift || 0;
-	my $limit = shift || 1000;
+	my $id    = $self->_intify(shift);
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignUnsubscribes()')    unless ($id    =~ /^\d+$/);
-	$self->error('invalid page passed to WWW::MyNewsletterBuilder->CampaignUnsubscribes()')  unless ($page  =~ /^\d+$/);
-	$self->error('invalid limit passed to WWW::MyNewsletterBuilder->CampaignUnsubscribes()') unless ($limit =~ /^\d+$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'CampaignUnsubscribes',
 		$id,
 		$page,
@@ -305,42 +260,33 @@ sub CampaignUnsubscribes{
 }
 
 sub CampaignUrls{
-    my $self  = shift;
-	my $id    = shift;
+    my $self = shift;
+	my $id   = $self->_intify(shift);
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->CampaignUrls()') unless ($id  =~ /^\d+$/);
-
-	return $self->Execute('CampaignUrls', $id);
+	return $self->_Execute('CampaignUrls', $id);
 }
 
 sub Lists{
 	my $self = shift;
 	
-	return $self->Execute('Lists');
+	return $self->_Execute('Lists');
 }
 
 sub ListDetails{
 	my $self = shift;
-	my $id   = shift;
+	my $id   = $self->_intify(shift);
 	
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->ListDetails()') unless ($id  =~ /^\d+$/);
-	
-	return $self->Execute('ListDetails', $id);
+	return $self->_Execute('ListDetails', $id);
 }
 
 sub ListCreate{
 	my $self        = shift;
-	my $name        = shift;
-	my $description = shift || '';
-	my $visible     = shift || 0;
-	my $default     = shift || 0;
+	my $name        = $self->_stringify(shift);
+	my $description = $self->_stringify(shift || '', 1);
+	my $visible     = $self->_boolify(shift || 0);
+	my $default     = $self->_boolify(shift || 0);
 
-	$self->error('invalid name passed to WWW::MyNewsletterBuilder->ListCreate()')         unless ($name        =~ /^.+$/);
-	$self->error('invalid description passed to WWW::MyNewsletterBuilder->ListCreate()')  unless ($description =~ /^.+$/);
-	$self->error('invalid visible flag passed to WWW::MyNewsletterBuilder->ListCreate()') unless ($visible     =~ /^(0|1)$/);
-	$self->error('invalid default flag passed to WWW::MyNewsletterBuilder->ListCreate()') unless ($default     =~ /^(0|1)$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'ListCreate',
 		$name,
 		$description,
@@ -351,42 +297,32 @@ sub ListCreate{
 
 sub ListUpdate{
 	my $self        = shift;
-	my $id          = shift;
+	my $id          = $self->_intify(shift);
 	my $details     = shift;
 
-	$self->error('invalid id passed to WWW::MyNewsletterBuilder->ListUpdate()')           unless ($id      =~ /^\d+$/);
 	#TODO: details hashref validation
 
-	return $self->Execute(
-		'ListUpdate',
-		$id,
-		$details,
-	);
+	return $self->_Execute('ListUpdate', $id, $details);
 }
 
 sub ListDelete{
 	my $self        = shift;
-	my $id          = shift;
-	my $delete_subs = shift;
+	my $id          = $self->_intify(shift);
+	my $delete_subs = $self->_boolify(shift || 0);
 
-	$self->error('invalid cat_id passed to WWW::MyNewsletterBuilder->ListDelete()')           unless ($id          =~ /^\d+$/);
-	$self->error('invalid delete_subs flag passed to WWW::MyNewsletterBuilder->ListDelete()') unless ($delete_subs =~ /^(0|1)$/);
-
-	return $self->Execute('ListDelete', $id, $delete_subs);
+	return $self->_Execute('ListDelete', $id, $delete_subs);
 }
 
 sub Subscribe{
 	my $self            = shift;
 	my $details         = shift;
 	my $lists           = shift;
-	my $skip_opt_in     = shift || 0;
-	my $update_existing = shift || 1;
+	my $skip_opt_in     = $self->_boolify(shift || 0);
+	my $update_existing = $self->_boolify(shift || 1);
 
-	$self->error('invalid skip_opt_in flag passed to WWW::MyNewsletterBuilder->Subscribe()')     unless ($skip_opt_in     =~ /^(0|1)$/);
-	$self->error('invalid update_existing flag passed to WWW::MyNewsletterBuilder->Subscribe()') unless ($update_existing =~ /^(0|1)$/);
 	#TODO: validate details and lists
 
-	return $self->Execute(
+	return $self->_Execute(
 		'Subscribe',
 		$details,
 		$lists,
@@ -399,14 +335,12 @@ sub SubscribeBatch{
 	my $self            = shift;
 	my $subscribers     = shift;
 	my $lists           = shift;
-	my $skip_opt_in     = shift || 0;
-	my $update_existing = shift || 1;
+	my $skip_opt_in     = $self->_boolify(shift || 0);
+	my $update_existing = $self->_boolify(shift || 1);
 
-	$self->error('invalid skip_opt_in flag passed to WWW::MyNewsletterBuilder->SubscribeBatch()')     unless ($skip_opt_in     =~ /^(0|1)$/);
-	$self->error('invalid update_existing flag passed to WWW::MyNewsletterBuilder->SubscribeBatch()') unless ($update_existing =~ /^(0|1)$/);
 	#TODO: validate subscribers and lists
 
-	return $self->Execute(
+	return $self->_Execute(
 		'SubscribeBatch',
 		$subscribers,
 		$lists,
@@ -417,23 +351,20 @@ sub SubscribeBatch{
 
 sub SubscriberInfo{
 	my $self        = shift;
-	my $id_or_email = shift;
+	my $id_or_email = $self->_stringify(shift);
 
-	$self->error('invalid id_or_email passed to WWW::MyNewsletterBuilder->SubscriberInfo()') unless ($id_or_email =~ /^.+$/);
-
-	return $self->Execute('SubscriberInfo', $id_or_email);
+	return $self->_Execute('SubscriberInfo', $id_or_email);
 }
 
 sub SubscriberUpdate{
 	my $self        = shift;
-	my $id_or_email = shift;
+	my $id_or_email = $self->_stringify(shift);
 	my $details     = shift;
 	my $lists       = shift;
 	
-	$self->error('invalid id_or_email passed to WWW::MyNewsletterBuilder->SubscriberUpdate()') unless ($id_or_email =~ /^.+$/);
 	#TODO: validate details and lists
 
-	return $self->Execute(
+	return $self->_Execute(
 		'SubscriberUpdate',
 		$id_or_email,
 		$details,
@@ -442,30 +373,26 @@ sub SubscriberUpdate{
 }
 
 sub SubscriberUnsubscribe{
-	my $self = shift;
-	my $id_or_email   = shift;
+	my $self        = shift;
+	my $id_or_email = $self->_stringify(shift);
 
-	$self->error('invalid id_or_email passed to WWW::MyNewsletterBuilder->SubscriberUnsubscribe()') unless ($id_or_email =~ /^.+$/);
-
-	return $self->Execute('SubscriberUnsubscribe', $id_or_email);
+	return $self->_Execute('SubscriberUnsubscribe', $id_or_email);
 }
 
 sub SubscriberUnsubscribeBatch{
-	my $self = shift;
-	my $id_or_email   = shift;
+	my $self          = shift;
+	my $ids_or_emails = shift;
 
-	$self->error('invalid id_or_email passed to WWW::MyNewsletterBuilder->SubscriberUnsubscribeBatch()') unless ($id_or_email =~ /^.+$/);
+	#TODO: validate ids_or_emails
 
-	return $self->Execute('SubscriberUnsubscribeBatch', $id_or_email);
+	return $self->_Execute('SubscriberUnsubscribeBatch', $ids_or_emails);
 }
 
 sub SubscriberDelete{
 	my $self        = shift;
-	my $id_or_email = shift;
+	my $id_or_email = $self->_stringify(shift);
 
-	$self->error('invalid id_or_email passed to WWW::MyNewsletterBuilder->SubscriberDelete()') unless ($id_or_email =~ /^.+$/);
-
-	return $self->Execute('SubscriberDelete', $id_or_email);
+	return $self->_Execute('SubscriberDelete', $id_or_email);
 }
 
 sub SubscriberDeleteBatch{
@@ -474,20 +401,16 @@ sub SubscriberDeleteBatch{
 
 	#TODO: validate $ids_or_emails
 
-	return $self->Execute('SubscriberDeleteBatch', $ids_or_emails);
+	return $self->_Execute('SubscriberDeleteBatch', $ids_or_emails);
 }
 
 sub AccountKeys{
 	my $self     = shift;
-	my $username = shift;
-	my $password = shift;
-	my $disabled = shift || 0;
+	my $username = $self->_stringify(shift);
+	my $password = $self->_stringify(shift);
+	my $disabled = $self->_boolify(shift || 0);
 
-	$self->error('invalid username passed to WWW::MyNewsletterBuilder->AccountKeys()')      unless ($username =~ /^.+$/);
-	$self->error('invalid password passed to WWW::MyNewsletterBuilder->AccountKeys()')      unless ($password =~ /^.+$/);
-	$self->error('invalid disabled flag passed to WWW::MyNewsletterBuilder->AccountKeys()') unless ($disabled     =~ /^(0|1)$/);
-
-	return $self->Execute(
+	return $self->_Execute(
 		'AccountKeys',
 		$username,
 		$password,
@@ -495,77 +418,104 @@ sub AccountKeys{
 	);
 }
 
-sub AccountKeyAdd{
+sub AccountKeyCreate{
 	my $self     = shift;
-	my $username = shift;
-	my $password = shift;
+	my $username = $self->_stringify(shift);
+	my $password = $self->_stringify(shift);
 
-	$self->error('invalid username passed to WWW::MyNewsletterBuilder->AccountKeyAdd()') unless ($username =~ /^.+$/);
-	$self->error('invalid password passed to WWW::MyNewsletterBuilder->AccountKeyAdd()') unless ($password =~ /^.+$/);
-
-	return $self->Execute('AccountKeyAdd', $username, $password);
+	return $self->_Execute('AccountKeyCreate', $username, $password);
 }
 
-sub AccountKeyRemove{
-	my $self     = shift;
-	my $username = shift;
-	my $password = shift;
+sub AccountKeyEnable{
+	my $self      = shift;
+	my $username  = $self->_stringify(shift);
+	my $password  = $self->_stringify(shift);
+	my $id_or_key = $self->_stringify(shift);
 
-	$self->error('invalid username passed to WWW::MyNewsletterBuilder->AccountKeyRemove()') unless ($username =~ /^.+$/);
-	$self->error('invalid password passed to WWW::MyNewsletterBuilder->AccountKeyRemove()') unless ($password =~ /^.+$/);
-
-	return $self->Execute('AccounKeyRemove', $username, $password);
+	return $self->_Execute(
+		'AccounKeyEnable',
+		$username,
+		$password,
+		$id_or_key
+	);
 }
 
- ##
- # Test server response
- # @param string String to echo
- # @return string
- ##
+sub AccountKeyDisable{
+	my $self      = shift;
+	my $username  = $self->_stringify(shift);
+	my $password  = $self->_stringify(shift);
+	my $id_or_key = $self->_stringify(shift);
+
+	return $self->_Execute(
+		'AccounKeyDisable',
+		$username,
+		$password,
+		$id_or_key
+	);
+}
+
 sub HelloWorld{
 	my $self = shift;
-	my $val  = shift;
+	my $val  = $self->_stringify(shift || '', 1);
 
-	return $self->Execute('HelloWorld', $val);
+	return $self->_Execute('HelloWorld', $val);
 }
 
- ##
- # Connect to remote server and handle response.
- # @param string $method Action to invoke
- # @param mixed $params Parameters required for $method
- # @return mixed Server response, FALSE on error.
- ##
-sub Execute{
+sub _Execute{
 	my $self   = shift;
 	my $method = shift;
 
 	$self->{errno}  = '';
 	$self->{errstr} = '';
 
-	my $data = $self->{client}->call($method, $self->{api_key}, @_);
+	my $data;
+	eval{
+		$data = $self->{client}->call($method, $self->{api_key}, @_);	
+	};
 
-	if ($self->{debug}){
+	if ($self->{_debug}){
 		use Data::Dumper;
-		print 'returned data'."\n";
+		print "returned data\n";
 		print Dumper $data;
 	}
 
-	if (!$data){
+	if ($@){
+		$self->{errno}  = 2;
+		$self->{errstr} = $@;
+
+		if ($self->{_debug}){
+			print 'errors: '. $self->{errno} .'--'. $self->{errstr} ."\n";
+		}
+
+		return 0;
+	}
+	elsif (!$data){
 		$self->{errno}  = 2;
 		$self->{errstr} = 'Empty response from API server';
+
+		if ($self->{_debug}){
+			print 'errors: '. $self->{errno} .'--'. $self->{errstr} ."\n";
+		}
+
 		return 0;
 	}
 
 	if (ref($data) eq 'HASH' && $data->{'errno'}){
-		$self->{errno} = $data->{'errno'};
+		$self->{errno}  = $data->{'errno'};
 		$self->{errstr} = $data->{'errstr'};
 		return 0;
+	}
+
+	# frontier returns bool objects instead of 1/0
+	# this yanks 1 or 0 out of that object
+	if (ref($data) eq 'Frontier::RPC2::Boolean'){
+		return $data->value;
 	}
 
 	return $data;
 }
 
-sub buildUrl{
+sub _buildUrl{
 	my $self = shift;
 	my $url;
 	if ($self->{secure}){
@@ -575,10 +525,10 @@ sub buildUrl{
 		$url = 'http://';	
 	}
 
-	return $url . $self->{api_host} . '/' . $self->{api_version};
+	return $url . $self->{_api_host} . '/' . $self->{_api_version};
 }
 
-sub getClient{
+sub _getClient{
 	my $self = shift;
 	my $url  = shift;
 
@@ -588,14 +538,14 @@ sub getClient{
 	);
 
 	# we have to modify Frontier's LWP instance a little bit.
-	$client->{ua}->agent('MNB_API Perl ' . $self->{api_version} . '/' . $VERSION . '-' . '$Rev: 59133 $');
+	$client->{ua}->agent('MNB_API Perl ' . $self->{_api_version} . '/' . $VERSION . '-' . '$Rev: 59277 $');
 	$client->{ua}->requests_redirectable(['GET', 'HEAD', 'POST' ]);
 	$client->{ua}->timeout($self->{timeout});
 
 	return $client;
 }
 
-sub error{
+sub _error{
 	my $self = shift;
 	my $msg  = shift;
 	my $warn = shift || 0;
@@ -608,6 +558,62 @@ sub error{
 	}
 }
 
+##
+#
+# $self->_intify( int $var, bool $require)
+# validates value of $var as an int... throws error if it isn't
+# converts to Frontier int data type if test passed (or we aren't validating data))
+#
+##
+sub _intify{
+	my $self    = shift;
+	my $var     = shift;
+	my $emptyOk = shift || 0;
+	
+	my $check = '\d+';
+	$check = '\d*' if ($emptyOk);
+	
+	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected int got '. $var) unless ($var =~ /^($check)$/);
+	
+	return $self->{client}->int($var);
+}
+
+##
+#
+# $self->_stringify( string $var, bool $require)
+# validates value of $var as an string... throws error if it isn't
+# converts to Frontier string data type if test passed (or we aren't validating data))
+#
+##
+sub _stringify{
+	my $self    = shift;
+	my $var     = shift;
+	my $emptyOk = shift || 0;
+
+	my $check = '.+';
+	$check = '.*' if ($emptyOk);
+
+	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1] .':'. (caller(1))[2] .' expected string got '. $var) unless ($var =~ /^($check)$/);
+	
+	return $self->{client}->string($var);
+}
+
+##
+#
+# $self->boolfy( int $var, bool $require)
+# validates value of $var as a bool... throws error if it isn't
+# converts to Frontier bool data type if test passed (or we aren't validating data))
+#
+##
+sub _boolify{
+	my $self    = shift;
+	my $var     = shift;
+
+	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected bool(0 or 1) got '. $var) unless ($var =~ /^(0|1)$/);
+	
+	return $self->{client}->boolean($var);
+}
+
 1;
 __END__
 
@@ -617,19 +623,35 @@ WWW::MyNewsletterBuilder - Perl implementation of the mynewsletterbuilder.com AP
 
 =head1 SYNOPSIS
 
-	#!/usr/bin/perl
-	use warnings;
-	use strict;
+instantiate the module
+
 	use WWW::MyNewsletterBuilder;
-	
 	my $mnb = WWW::MyNewsletterBuilder->new(
 		api_key     => , # your key here
 	);
-	
+
+quick test of server connection
+
 	print $mnb->HelloWorld('Perl Test');
-	
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
+
+get a list of campaigns and display their names
+
 	my $campaigns = $mnb->Campaigns( status => 'all' );
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
 	
+	foreach my $c (@$campaigns){
+		print $c->{name} . "\n";
+	}
+
+create a new campaign
+
 	my $cam_id = $mnb->CampaignCreate(
 		'perl test',
 		'perl test subject',
@@ -644,13 +666,25 @@ WWW::MyNewsletterBuilder - Perl implementation of the mynewsletterbuilder.com AP
 		'<a href="mynewsletterbuilder.com">html content</a>',
 		'text content',
 	);
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
+
+create a new subscriber list
 
 	my $list_id = $mnb->ListCreate(
 		'perl test',
 		'perl test list',
 	);
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
 
-	my $sub_id = $mnb->Subscribe(
+add a subscriber
+
+	my $sub = $mnb->Subscribe(
 		{
 			email            => 'robert@jbanetwork.com',
 			first_name       => 'Robert',
@@ -666,18 +700,46 @@ WWW::MyNewsletterBuilder - Perl implementation of the mynewsletterbuilder.com AP
 		},
 		[ $list_id ]
 	);
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
+
+schedule a campaign send
 
 	$mnb->CampaignSchedule(
 		$cam_id,
-		time(),
+		time(), # send it NOW
 		[ $list_id ],
 	);
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
 
-	$mnb->SubscriberDelete("$sub_id");
+delete a subscriber
 	
+	$mnb->SubscriberDelete($sub->{id});
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
+
+delete a list
+
 	$mnb->ListDelete($list_id);
-	
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
+
+delete a campaign
+
 	$mnb->CampaignDelete($cam_id);
+	if ($mnb->{errno}){
+		warn($mnb->{errstr});
+		#oh no there was an error i should do something about it
+	}
 
 =head1 DESCRIPTION
 
@@ -698,13 +760,13 @@ The following options correspond to attribute methods described below:
    password                undef
    timeout                 300
    secure                  0 (1 will use ssl)
-   no_validation           0 (1 will warn instead of die on invalid argument)
+   no_validation           0 (1 will warn instead of die on invalid argument !!WARNING!!)
    #############################################
    ### dev options... use at your own risk...### 
    #############################################   
-   api_host                'api.mynewsletterbuilder.com'
-   api_version             '1.0'
-   debug                   0 (1 will print all kinds of stuff)
+   _api_host                'api.mynewsletterbuilder.com'
+   _api_version             '1.0'
+   _debug                   0 (1 will print all kinds of stuff)
 
 =item $mnb->Timeout( int $timeout )
 
@@ -712,7 +774,7 @@ sets timeout for results
 
 =item $mnb->Campaigns( %filters )
 
-returns an array of hashrefs listing campaigns.  Optional key/value pair argument allows you to filter results:
+returns an arrayrefref of hashrefs listing campaigns.  Optional key/value pair argument allows you to filter results:
 
    KEY                     OPTIONS
    ___________             ____________________
@@ -720,7 +782,7 @@ returns an array of hashrefs listing campaigns.  Optional key/value pair argumen
    archived                1, 0
    published               1, 0
 
-returned hashrefs are in the following format:
+returns an arrayref of hashrefs in the following format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -819,7 +881,7 @@ takes a campaign id and returns stats for that campaign. returned hahsref has th
 
 =item $mnb->CampaignRecipients( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -829,7 +891,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignOpens( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who have opened the campaign in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers who have opened the campaign in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -841,7 +903,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignBounces( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who bounced in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers who bounced in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -851,7 +913,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignClicks( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who clicked links in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who clicked links in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -860,7 +922,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignClickDetails( int $id, int $url_id, int $page, int $limit)
 
-takes a campaign id, url id and optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who clicked links in the format:
+takes a campaign id, url id and optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who clicked links in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -871,7 +933,7 @@ takes a campaign id, url id and optional page number and limit (for paging syste
 
 =item $mnb->CampaignSubscribes( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who subscribed based on this campaign in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who subscribed based on this campaign in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -881,7 +943,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignUnsubscribes( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an array of hashrefs containing data about subscribers who unsubscribed in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who unsubscribed in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -891,7 +953,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignUrls( int $id )
 
-takes a campaign id and returns an array of hashrefs with link related data in the format:
+takes a campaign id and returns an arrayref of hashrefs with link related data in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -903,7 +965,7 @@ takes a campaign id and returns an array of hashrefs with link related data in t
 
 =item $mnb->Lists( )
 
-returns an array hasrefs of subscriber lists with the following keys:
+returns an arrayref of hasrefs of subscriber lists with the following keys:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -1146,13 +1208,13 @@ takes the user's username and password creates a key and returns data about crea
    create                          date key created
    expired                         date key expired or was disabled (null for valid key)
 
-=item $mnb->AccountKeyDisable( string $username, string $password, string $id_or_key )
-
-takes the user's username and password and an id or existing key it disables the referenced key and returns 1 on success and an error on failure.
-
 =item $mnb->AccountKeyEnable( string $username, string $password, string $id_or_key )
 
 takes the user's username and password and an id or existing key it enables the referenced key and returns 1 on success and an error on failure.
+
+=item $mnb->AccountKeyDisable( string $username, string $password, string $id_or_key )
+
+takes the user's username and password and an id or existing key it disables the referenced key and returns 1 on success and an error on failure.
 
 =item $mnb->HelloWorld( string $value )
 
@@ -1160,13 +1222,20 @@ takes a value and echos it back from the API server.
 
 =back
 
+=head2 ERRORS
+
+By default we validate your data before sending to the server.  If validation fails we issue die() with a relevant error message.  You can force us to warn instead of dying by passing no_validation => 1 to new().
+
+Server side errors will cause functions to return 0.  They will also populate $mnb->{errno} and $mnb->{errstr}.  You should probably check $mnb->{errno} after calling any function.  Fatal errors within the underlying Frontier::Client module may be caught by the same mechinism that catches server side exceptions.  You REALLY need to check for errors after ever call.
+
 =head2 EXPORT
 
 None by default.
 
 =head2 REQUIREMENTS
 
-Frontier::Client
+Frontier::RPC
+Data::Dumper
 
 =head1 SEE ALSO
 
