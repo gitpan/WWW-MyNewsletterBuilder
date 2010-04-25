@@ -22,3 +22,8 @@ Revision history for Perl extension WWW::MyNewsletterBuilder
 
 0.02b01 Wed Apr 21 11:41:05 2010
 	- Change namespace to WWW::MyNewsletterBuilder from WWW::JBANetwork::MNB
+
+0.02b01 Wed Apr 25 15:06:46 2010
+	- change SubscriberInfo to SubscriberDetails
+	- add Subscribers function.
+	- fix requirements again

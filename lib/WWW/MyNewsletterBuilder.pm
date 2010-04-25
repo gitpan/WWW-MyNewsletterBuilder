@@ -6,7 +6,7 @@
 # WWW::MyNewsletterBuilder is an interface to the mynewsletterbuilder.com
 # XML-RPC API.
 #
-# $Id: MyNewsletterBuilder.pm 59277 2010-04-21 15:45:31Z bo $
+# $Id: MyNewsletterBuilder.pm 59443 2010-04-25 19:07:27Z bo $
 #
 
 package WWW::MyNewsletterBuilder;
@@ -15,7 +15,7 @@ use strict;
 use warnings;
 use Frontier::Client;
 
-our $VERSION = '0.02b01';
+our $VERSION = '0.02b02';
 
 sub new {
 	my $class = shift;
@@ -349,11 +349,21 @@ sub SubscribeBatch{
 	);
 }
 
-sub SubscriberInfo{
+sub Subscribers{
+	my $self = shift;
+	my $statuses = shift;
+	my $lists = shift;
+	my $page  = $self->_intify(shift || 0);
+	my $limit = $self->_intify(shift || 1000);
+
+	return $self->_Execute('Subscribers', $statuses, $lists, $page, $limit);
+}
+
+sub SubscriberDetails{
 	my $self        = shift;
 	my $id_or_email = $self->_stringify(shift);
 
-	return $self->_Execute('SubscriberInfo', $id_or_email);
+	return $self->_Execute('SubscriberDetails', $id_or_email);
 }
 
 sub SubscriberUpdate{
@@ -538,7 +548,7 @@ sub _getClient{
 	);
 
 	# we have to modify Frontier's LWP instance a little bit.
-	$client->{ua}->agent('MNB_API Perl ' . $self->{_api_version} . '/' . $VERSION . '-' . '$Rev: 59277 $');
+	$client->{ua}->agent('MNB_API Perl ' . $self->{_api_version} . '/' . $VERSION . '-' . '$Rev: 59443 $');
 	$client->{ua}->requests_redirectable(['GET', 'HEAD', 'POST' ]);
 	$client->{ua}->timeout($self->{timeout});
 
@@ -1091,8 +1101,21 @@ the subscribers key of the return from SubscribeBatch() contains an array of has
    status                          status of subscription.  possible values are new, updated, error, ignored
    status_msg                      contains text message about update... usually only used for errors
 
+=item $mnb->Subscribers( @statuses, @lists, int $page, int $limit )
 
-=item $mnb->SubscriberInfo( string $id_or_email )
+takes arrays of statuses and list ids to filter by, an optional page number and limit (for paging systems on large data sets). returns an array of subscriber data.
+
+options for statuses are active, unsubscribed, deleted.
+
+return is a keyed array with the following keys:
+
+   KEY                             DESCRIPTION
+   ___________                     ____________________
+   id                              subscriber's unique id
+   email                           subscriber's uniqe email
+   status                          status of subscription.  possible values are new, updated, error, ignored
+
+=item $mnb->SubscriberDetails( string $id_or_email )
 
 takes an argument that can be either the unique id for the subscriber or an email address and returns a hashref of subscriber data in the following format:
 
