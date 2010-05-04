@@ -6,7 +6,7 @@
 # WWW::MyNewsletterBuilder is an interface to the mynewsletterbuilder.com
 # XML-RPC API.
 #
-# $Id: MyNewsletterBuilder.pm 59443 2010-04-25 19:07:27Z bo $
+# $Id: MyNewsletterBuilder.pm 59878 2010-05-04 22:15:50Z bo $
 #
 
 package WWW::MyNewsletterBuilder;
@@ -15,7 +15,7 @@ use strict;
 use warnings;
 use Frontier::Client;
 
-our $VERSION = '0.02b02';
+our $VERSION = '0.021';
 
 sub new {
 	my $class = shift;
@@ -61,11 +61,24 @@ sub Campaigns{
 	my $self    = shift;
 	my $filters = ($#_ == 0) ? { %{ (shift) } } : { @_ };
 
-	# make sure that if filters is populated
-	# it is a hashref
-	if ($filters && ref($filters) ne 'HASH'){
-		$self->_error('filter passed to WWW::MyNewsletterBuilder->Campaings() does not appear to be valid', 1);
-	}
+	$filters = $self->_validateHash(
+		$filters,
+		{
+			status => {
+				value   => 'string',
+				emptyOk => 1,
+			},
+			archived => {
+				value   => 'bool',
+				emptyOk => 1,
+			},
+			published => {
+				value   => 'bool',
+				emptyOk => 1,
+			},
+		},
+		1
+	);
 
 	return $self->_Execute('Campaigns', $filters);
 }
@@ -88,7 +101,32 @@ sub CampaignCreate{
 	my $link_tracking = $self->_boolify(shift || 1);
 	my $gat           = $self->_boolify(shift || 0);
 
-	#TODO: should probably add some from/reply validation here
+	$from = $self->_validateHash(
+		$from,
+		{
+			name => {
+				value => 'string',
+			},
+			email => {
+				value => 'string',
+			},
+		},
+	);
+	
+	$reply = $self->_validateHash(
+		$reply,
+		{
+			name => {
+				value => 'string',
+				emptyOk => 1,
+			},
+			email => {
+				value => 'string',
+				emptyOk => 1,
+			},
+		},
+		1
+	);
 
 	return $self->_Execute(
 		'CampaignCreate',
@@ -108,7 +146,39 @@ sub CampaignUpdate{
 	my $id            = $self->_intify(shift);
 	my $details       = shift;
 
-	#TODO: should probably add some detail validation here
+	my $signature = {};
+	$signature->{name}             = {value => 'string'};
+	$signature->{subject}          = {value => 'string'};
+	$signature->{html}             = {value => 'string'};
+	$signature->{text}             = {value => 'string', emptyOk => 1};
+	$signature->{link_tracking}    = {value => 'bool',   emptyOk => 1};
+	$signature->{gat}              = {value => 'bool',   emptyOk => 1};
+
+	$signature->{from} = {
+		value => {
+			name => {
+				value => 'string',
+			},
+			email => {
+				value => 'string',
+			},
+		},
+	};
+	$signature->{reply} = {
+		value => {
+			name => {
+				value => 'string',
+				emptyOk => 1,
+			},
+			email => {
+				value => 'string',
+				emptyOk => 1,
+			},
+		},
+		emptyOk => 1,
+	};
+
+	$details = $self->_validateHash($details, $signature);
 
 	return $self->_Execute(
 		'CampaignUpdate',
@@ -140,7 +210,7 @@ sub CampaignSchedule{
 	my $smart     = $self->_boolify(shift || 0);
 	my $confirmed = $self->_boolify(shift || 0);
 
-	#TODO: add some validation for $lists here
+	$lists = $self->_validateArray($lists, 'int', 1);
 
 	return $self->_Execute(
 		'CampaignSchedule',
@@ -300,7 +370,25 @@ sub ListUpdate{
 	my $id          = $self->_intify(shift);
 	my $details     = shift;
 
-	#TODO: details hashref validation
+	my $signature = {};
+	$signature->{name} = {
+		value   => 'string',
+		emptyOk => 1,
+	};
+	$signature->{description} = {
+		value   => 'string',
+		emptyOk => 1,
+	};
+	$signature->{visible} = {
+		value   => 'bool',
+		emptyOk => 1,
+	};
+	$signature->{default} = {
+		value   => 'bool',
+		emptyOk => 1,
+	};
+
+	$details = $self->_validateHash($details, $signature);
 
 	return $self->_Execute('ListUpdate', $id, $details);
 }
@@ -320,7 +408,27 @@ sub Subscribe{
 	my $skip_opt_in     = $self->_boolify(shift || 0);
 	my $update_existing = $self->_boolify(shift || 1);
 
-	#TODO: validate details and lists
+	my $signature = {};
+	$signature->{email}        = {value => 'string'};
+	$signature->{first_name}   = {value => 'string', emptyOk => 1};
+	$signature->{middle_name}  = {value => 'string', emptyOk => 1};
+	$signature->{last_name}    = {value => 'string', emptyOk => 1};
+	$signature->{full_name}    = {value => 'string', emptyOk => 1};
+	$signature->{company_name} = {value => 'string', emptyOk => 1};
+	$signature->{job_title}    = {value => 'string', emptyOk => 1};
+	$signature->{phone_work}   = {value => 'string', emptyOk => 1};
+	$signature->{phone_home}   = {value => 'string', emptyOk => 1};
+	$signature->{address_1}    = {value => 'string', emptyOk => 1};
+	$signature->{address_2}    = {value => 'string', emptyOk => 1};
+	$signature->{address_3}    = {value => 'string', emptyOk => 1};
+	$signature->{city}         = {value => 'string', emptyOk => 1};
+	$signature->{state}        = {value => 'string', emptyOk => 1};
+	$signature->{zip}          = {value => 'string', emptyOk => 1};
+	$signature->{country}      = {value => 'string', emptyOk => 1};
+
+	$details = $self->_validateHash($details, $signature);
+
+	$lists = $self->_validateArray($lists, 'int', 1);
 
 	return $self->_Execute(
 		'Subscribe',
@@ -338,7 +446,27 @@ sub SubscribeBatch{
 	my $skip_opt_in     = $self->_boolify(shift || 0);
 	my $update_existing = $self->_boolify(shift || 1);
 
-	#TODO: validate subscribers and lists
+	my $signature = {};
+	$signature->{email}        = {value => 'string'};
+	$signature->{first_name}   = {value => 'string', emptyOk => 1};
+	$signature->{middle_name}  = {value => 'string', emptyOk => 1};
+	$signature->{last_name}    = {value => 'string', emptyOk => 1};
+	$signature->{full_name}    = {value => 'string', emptyOk => 1};
+	$signature->{company_name} = {value => 'string', emptyOk => 1};
+	$signature->{job_title}    = {value => 'string', emptyOk => 1};
+	$signature->{phone_work}   = {value => 'string', emptyOk => 1};
+	$signature->{phone_home}   = {value => 'string', emptyOk => 1};
+	$signature->{address_1}    = {value => 'string', emptyOk => 1};
+	$signature->{address_2}    = {value => 'string', emptyOk => 1};
+	$signature->{address_3}    = {value => 'string', emptyOk => 1};
+	$signature->{city}         = {value => 'string', emptyOk => 1};
+	$signature->{state}        = {value => 'string', emptyOk => 1};
+	$signature->{zip}          = {value => 'string', emptyOk => 1};
+	$signature->{country}      = {value => 'string', emptyOk => 1};
+
+	$subscribers = $self->_validateArray($subscribers, $signature);
+
+	$lists = $self->_validateArray($lists, 'int', 1);
 
 	return $self->_Execute(
 		'SubscribeBatch',
@@ -372,7 +500,27 @@ sub SubscriberUpdate{
 	my $details     = shift;
 	my $lists       = shift;
 	
-	#TODO: validate details and lists
+	my $signature = {};
+	$signature->{email}        = {value => 'string'};
+	$signature->{first_name}   = {value => 'string', emptyOk => 1};
+	$signature->{middle_name}  = {value => 'string', emptyOk => 1};
+	$signature->{last_name}    = {value => 'string', emptyOk => 1};
+	$signature->{full_name}    = {value => 'string', emptyOk => 1};
+	$signature->{company_name} = {value => 'string', emptyOk => 1};
+	$signature->{job_title}    = {value => 'string', emptyOk => 1};
+	$signature->{phone_work}   = {value => 'string', emptyOk => 1};
+	$signature->{phone_home}   = {value => 'string', emptyOk => 1};
+	$signature->{address_1}    = {value => 'string', emptyOk => 1};
+	$signature->{address_2}    = {value => 'string', emptyOk => 1};
+	$signature->{address_3}    = {value => 'string', emptyOk => 1};
+	$signature->{city}         = {value => 'string', emptyOk => 1};
+	$signature->{state}        = {value => 'string', emptyOk => 1};
+	$signature->{zip}          = {value => 'string', emptyOk => 1};
+	$signature->{country}      = {value => 'string', emptyOk => 1};
+
+	$details = $self->_validateHash($details, $signature);
+
+	$lists = $self->_validateArray($lists, 'int', 1);
 
 	return $self->_Execute(
 		'SubscriberUpdate',
@@ -393,7 +541,7 @@ sub SubscriberUnsubscribeBatch{
 	my $self          = shift;
 	my $ids_or_emails = shift;
 
-	#TODO: validate ids_or_emails
+	$ids_or_emails = $self->_validateArray($ids_or_emails, 'string');
 
 	return $self->_Execute('SubscriberUnsubscribeBatch', $ids_or_emails);
 }
@@ -409,7 +557,7 @@ sub SubscriberDeleteBatch{
 	my $self          = shift;
 	my $ids_or_emails = shift;
 
-	#TODO: validate $ids_or_emails
+	$ids_or_emails = $self->_validateArray($ids_or_emails, 'string');
 
 	return $self->_Execute('SubscriberDeleteBatch', $ids_or_emails);
 }
@@ -516,13 +664,7 @@ sub _Execute{
 		return 0;
 	}
 
-	# frontier returns bool objects instead of 1/0
-	# this yanks 1 or 0 out of that object
-	if (ref($data) eq 'Frontier::RPC2::Boolean'){
-		return $data->value;
-	}
-
-	return $data;
+	return $self->_unBoolify($data);
 }
 
 sub _buildUrl{
@@ -548,7 +690,7 @@ sub _getClient{
 	);
 
 	# we have to modify Frontier's LWP instance a little bit.
-	$client->{ua}->agent('MNB_API Perl ' . $self->{_api_version} . '/' . $VERSION . '-' . '$Rev: 59443 $');
+	$client->{ua}->agent('MNB_API Perl ' . $self->{_api_version} . '/' . $VERSION . '-' . '$Rev: 59878 $');
 	$client->{ua}->requests_redirectable(['GET', 'HEAD', 'POST' ]);
 	$client->{ua}->timeout($self->{timeout});
 
@@ -559,13 +701,76 @@ sub _error{
 	my $self = shift;
 	my $msg  = shift;
 	my $warn = shift || 0;
-	
+
 	if ($self->{no_validation} || $warn){
 		warn($msg);
 	}
 	else{
 		die($msg);
 	}
+}
+
+sub _validateArray{
+	my $self      = shift;
+	my $array     = shift;
+	my $signature = shift;
+	my $emptyOk   = shift || 0;
+
+	my $isHash = 0;
+	if (ref($signature) eq 'HASH'){
+		$isHash = 1;
+	}
+
+	if (!$array and !$emptyOk){
+		$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected array got '. $array);
+	}
+
+	foreach (@$array){
+		if ($isHash){
+			$_ = validateHash($_, $signature, $emptyOk);
+		}
+		else{
+			my $function = '_' . $signature . 'ify';
+			$_ = $self->$function($_, $emptyOk);
+		}
+	}
+	return $array;
+}
+
+##
+#
+# takes a hash and a signature for that hash and validates the hash's
+# values then makes sure they are the proper xml-rpc types.
+#
+##
+sub _validateHash{
+	my $self      = shift;
+	my $hash      = shift;
+	my $signature = shift;
+	my $emptyOk   = shift || 0;
+
+	if (!$hash and !$emptyOk){
+		$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected hash got '. $hash);
+	}
+
+	##
+	#
+	# we loop through the signature keys.  if the value is a hash
+	# we need recursively call this function.  if it is a string
+	# we validate it based on the type.
+	#
+	##
+	foreach (keys(%$signature)){
+		if (ref($signature->{$_}->{value}) eq 'HASH'){
+			$hash->{$_} = $self->_validateHash($hash->{$_}, $signature->{$_}->{value}, $signature->{$_}->{emptyOk}) if (defined($hash->{$_}));
+		}
+		else{
+			my $function = '_' . $signature->{$_}->{value} . 'ify';
+			$hash->{$_} = $self->$function($hash->{$_}, $signature->{$_}->{emptyOk}) if (defined($hash->{$_}));
+		}
+	}
+
+	return $hash;
 }
 
 ##
@@ -579,12 +784,12 @@ sub _intify{
 	my $self    = shift;
 	my $var     = shift;
 	my $emptyOk = shift || 0;
-	
+
 	my $check = '\d+';
 	$check = '\d*' if ($emptyOk);
-	
+
 	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected int got '. $var) unless ($var =~ /^($check)$/);
-	
+
 	return $self->{client}->int($var);
 }
 
@@ -604,7 +809,7 @@ sub _stringify{
 	$check = '.*' if ($emptyOk);
 
 	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1] .':'. (caller(1))[2] .' expected string got '. $var) unless ($var =~ /^($check)$/);
-	
+
 	return $self->{client}->string($var);
 }
 
@@ -620,18 +825,40 @@ sub _boolify{
 	my $var     = shift;
 
 	$self->_error('invalid param passed to '. (caller(1))[3] .':'. (caller(0))[2] .' from '. (caller(1))[1]  .':'. (caller(1))[2] .' expected bool(0 or 1) got '. $var) unless ($var =~ /^(0|1)$/);
-	
+
 	return $self->{client}->boolean($var);
+}
+
+sub _unBoolify{
+	my $self    = shift;
+	my $var     = shift;
+
+	if (ref($var) eq 'ARRAY'){
+		foreach my $v (@$var){
+			$v = $self->_unBoolify($v);
+		}
+	}
+
+	if (ref($var) eq 'HASH'){
+		foreach (keys(%$var)){
+			$var->{$_} = $self->_unBoolify($var->{$_});
+		}
+	}
+
+	if (ref($var) ne 'Frontier::RPC2::Boolean'){
+		return $var;
+	}
+	return $var->value;
 }
 
 1;
 __END__
 
-=head1 NAME
+=head1 Name
 
 WWW::MyNewsletterBuilder - Perl implementation of the mynewsletterbuilder.com API
 
-=head1 SYNOPSIS
+=head1 Synopsis
 
 instantiate the module
 
@@ -654,8 +881,7 @@ get a list of campaigns and display their names
 	if ($mnb->{errno}){
 		warn($mnb->{errstr});
 		#oh no there was an error i should do something about it
-	}
-	
+	}	
 	foreach my $c (@$campaigns){
 		print $c->{name} . "\n";
 	}
@@ -728,7 +954,7 @@ schedule a campaign send
 	}
 
 delete a subscriber
-	
+
 	$mnb->SubscriberDelete($sub->{id});
 	if ($mnb->{errno}){
 		warn($mnb->{errstr});
@@ -751,9 +977,11 @@ delete a campaign
 		#oh no there was an error i should do something about it
 	}
 
-=head1 DESCRIPTION
+=head1 Description
 
 =head2 Methods
+
+=head3 Instantiation And Setup
 
 =over 4
 
@@ -782,9 +1010,15 @@ The following options correspond to attribute methods described below:
 
 sets timeout for results
 
+=back
+
+=head3 Campaigns (Emails)
+
+=over 4
+
 =item $mnb->Campaigns( %filters )
 
-returns an arrayrefref of hashrefs listing campaigns.  Optional key/value pair argument allows you to filter results:
+returns an arrayref of hashrefs listing campaigns.  Optional key/value pair argument allows you to filter results:
 
    KEY                     OPTIONS
    ___________             ____________________
@@ -805,10 +1039,12 @@ returns an arrayref of hashrefs in the following format:
 
 =item $mnb->CampaignDetails( int $id )
 
-requires a campaign id and returns a hashref containing a campaign's details with the following keys:
+requires a campaign id and returns a hashref containing the campaign's details with the following keys:
 
    KEY                     DESCRIPTION
    ___________             ____________________
+   id
+   name                    name for reply to
    reply_name              name for reply to
    reply_email             email address for reply to
    from_name               name for from
@@ -819,7 +1055,7 @@ requires a campaign id and returns a hashref containing a campaign's details wit
 
 =item $mnb->CampaignCreate( string $name, string $subject, \%from, \%reply, string $html, string $text, bool $link_tracking, bool $gat )
 
-requires a whole bunch of stuff and returns an id. arguments:
+requires a whole bunch of stuff and returns the id of the newly created campaign. arguments:
 
     string $name -- Internal campaign name
     string $subject -- Campaign subject line
@@ -862,7 +1098,7 @@ schedules a Campaign for sending based on arguments:
     array @lists -- flat array of list id's the campaign should go out to
     bool $smart -- 0(default) disables smart send 1 enables it. see http://help.mynewsletterbuilder.com/Help_Pop-up_for_Newsletter_Scheduler
     bool $confirmed -- 0(default) sends to all subscribers 1 sends to only confirmed
-    
+
 returns 0 on failure and 1 on success.
 
 =item $mnb->CampaignStats( int $id )
@@ -891,7 +1127,7 @@ takes a campaign id and returns stats for that campaign. returned hahsref has th
 
 =item $mnb->CampaignRecipients( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -901,7 +1137,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignOpens( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers who have opened the campaign in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who have opened the campaign in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -913,7 +1149,7 @@ takes a campaign id, an optional page number and limit (for paging systems on la
 
 =item $mnb->CampaignBounces( int $id, int $page, int $limit)
 
-takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayrefref of hashrefs containing data about subscribers who bounced in the format:
+takes a campaign id, an optional page number and limit (for paging systems on large data sets) and returns an arrayref of hashrefs containing data about subscribers who bounced in the format:
 
    KEY                     DESCRIPTION
    ___________             ____________________
@@ -967,13 +1203,19 @@ takes a campaign id and returns an arrayref of hashrefs with link related data i
 
    KEY                     DESCRIPTION
    ___________             ____________________
-   url_id                  numeric id of url
+   id                      numeric id of url
    link                    FQDN for link
    unique                  number of unique clicks
    total                   number of total clicks
    title                   text within link (can include html including img tags)
 
-=item $mnb->Lists( )
+=back
+
+=head3 Subscriber Lists
+
+=over 4
+
+=item $mnb->Lists()
 
 returns an arrayref of hasrefs of subscriber lists with the following keys:
 
@@ -982,9 +1224,22 @@ returns an arrayref of hasrefs of subscriber lists with the following keys:
    id                      numeric id for list
    name                    list name
    description             list description
-   hidden                  1 if hidden 0 if not
+   visible                 1 if visible 0 if not
    default                 1 if default 0 if not
    subscribers             number of subscribers in list
+
+=item $mnb->ListDetails( int $id )
+
+takes a list id and returns details about that list in a hashref with the following keys:
+
+   KEY                     DESCRIPTION
+   ___________             ____________________
+   id                      list id
+   name                    list name
+   description             list description
+   visible                 1 if list is visible 0 if not
+   default                 1 if list is a default selection on your subscription form
+   subscribers             total number of subscribers in the list
 
 =item $mnb->ListCreate( string $name, string $description, bool $visible, bool $default )
 
@@ -1012,6 +1267,12 @@ details hashref format:
 
 deletes the list identified by id.  if $delete_subs is 1 all subscribers in list are deleted as well.  if delete_subs is 0(default) we don't touch subscribers.  returns 1 on success and 0 on failure.
 
+=back
+
+=head3 Subscribers
+
+=over 4
+
 =item $mnb->Subscribe( \%details, \@lists, bool $skip_opt_in, bool $update_existing )
 
 sets up a single subscriber based on %details. if @lists is populated it OVERRIDES a current users current set of lists.  if it is empty no changes are made to existing users.  skip_opt_in is used to enable confirmation email (default is 0). update_existing is used to specify that you want %details to overrid an existing user's info.  it will NOT be applied to lists.  if lists is populated an existing user's lists WILL be overridden even with the update_existing flag set. it defaults to true.
@@ -1020,10 +1281,11 @@ sets up a single subscriber based on %details. if @lists is populated it OVERRID
 
    KEY                             DESCRIPTION
    ___________                     ____________________
-   email                           subscriber email address
+   email                           subscriber email address(required)
    first_name                      subscriber first name
    middle_name                     subscriber middle name
    last_name                       subscriber last name
+   full_name                       subscriber full name (yes this is a distinct field)
    company_name                    subscriber company name
    job_title                       subscribers job title
    phone_work                      subscriber work phone
@@ -1035,7 +1297,7 @@ sets up a single subscriber based on %details. if @lists is populated it OVERRID
    state                           state of address
    zip                             postal code
    country                         country part of address
-   
+
    custom field names              custom field values
 
 custom fields can be set by using their full name as the key and their value as the value... again this can lead to keys with spaces.
@@ -1072,7 +1334,7 @@ sets up multiple subscriber based on @subscribers which is an array of hashrefs.
    state                           state of address
    zip                             postal code
    country                         country part of address
-   
+
    custom field names              custom field values
 
 custom fields can be set by using their full name as the key and their value as the value... again this can lead to keys with spaces.
@@ -1091,7 +1353,7 @@ the meta key of the return from SubscribeBatch() contains a hashref with the fol
    total                           total count of attempted subscribes
    success                         total count of successful subscribes
    errors                          total count of subscribes with errors
-   
+
 the subscribers key of the return from SubscribeBatch() contains an array of hashrefs with the following keys:
 
    KEY                             DESCRIPTION
@@ -1113,7 +1375,7 @@ return is a keyed array with the following keys:
    ___________                     ____________________
    id                              subscriber's unique id
    email                           subscriber's uniqe email
-   status                          status of subscription.  possible values are new, updated, error, ignored
+   status                          status of subscriber.  possible values are active, unsubscribed or deleted
 
 =item $mnb->SubscriberDetails( string $id_or_email )
 
@@ -1147,7 +1409,7 @@ takes an argument that can be either the unique id for the subscriber or an emai
    status                          current status possible values: active, unsubscribed, deleted, list_too_small
    add_method                      who last updated the user possible values: U - user added, S - added self, A - Admin added, C - added by complaint system, B - added by bounce management system
    confirmed                       status of confirmation (confirmed, unconfirmed, pending)
-   
+
    custom field names              custom field values
 
 custom fields will come back in this hashref with their names as keys and their values as the value.  this means there is a possiblity that keys will have spaces in them.  sorry.
@@ -1177,11 +1439,10 @@ takes an argument that can be either the unique id for the subscriber or an emai
    state                           state of address
    zip                             postal code
    country                         country part of address
-   
+
    custom field names              custom field values
 
 custom fields can be set by using their full name as the key and their value as the value... again this can lead to keys with spaces.
-
 
 =item $mnb->SubscriberUnsubscribe( string $id_or_email )
 
@@ -1206,6 +1467,12 @@ returns 1 on success and 0 on failure.
 takes an argument that is an array containing either the unique id for subscribers or an email addresss and removes the subscribers for the user identified by your api_key. these subscribers WILL be readded if their email addresses are re-submitted to Subscribe() or SubscribeBatch().
 
 returns 1 on success and 0 on failure.
+
+=back
+
+=head3 Account Administration
+
+=over 4
 
 =item $mnb->AccountKeys( string $username, string $password, bool $disabled)
 
@@ -1239,36 +1506,38 @@ takes the user's username and password and an id or existing key it enables the 
 
 takes the user's username and password and an id or existing key it disables the referenced key and returns 1 on success and an error on failure.
 
+=back
+
+=head3 Testing
+
+=over 4
+
 =item $mnb->HelloWorld( string $value )
 
 takes a value and echos it back from the API server.
 
 =back
 
-=head2 ERRORS
+=head2 Errors
 
 By default we validate your data before sending to the server.  If validation fails we issue die() with a relevant error message.  You can force us to warn instead of dying by passing no_validation => 1 to new().
 
 Server side errors will cause functions to return 0.  They will also populate $mnb->{errno} and $mnb->{errstr}.  You should probably check $mnb->{errno} after calling any function.  Fatal errors within the underlying Frontier::Client module may be caught by the same mechinism that catches server side exceptions.  You REALLY need to check for errors after ever call.
 
-=head2 EXPORT
+=head2 Requirements
 
-None by default.
-
-=head2 REQUIREMENTS
-
-Frontier::RPC
+Frontier::Client
 Data::Dumper
 
-=head1 SEE ALSO
+=head1 See Also
 
 http://api.mynewsletterbuilder.com
 
-=head1 AUTHOR
+=head1 Author
 
 Robert Davis, robert@jbanetwork.com
 
-=head1 COPYRIGHT AND LICENSE
+=head1 Copyright And License
 
 Copyright (C) 2010 by JBA Network (http://www.jbanetwork.com)
 
